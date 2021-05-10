@@ -4,6 +4,7 @@ import json
 import datetime
 import numpy as np
 import skimage.draw
+import matplotlib.pyplot as plt
 
 # Root directory of the project
 ROOT_DIR = os.path.abspath("../../")
@@ -12,6 +13,7 @@ ROOT_DIR = os.path.abspath("../../")
 sys.path.append(ROOT_DIR)  # To find local version of the library
 from mrcnn.config import Config
 from mrcnn import model as modellib, utils
+from mrcnn import visualize
 
 # Path to trained weights file
 COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
@@ -19,6 +21,9 @@ COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
 # Directory to save logs and model checkpoints, if not provided
 # through the command line argument --logs
 DEFAULT_LOGS_DIR = os.path.join(ROOT_DIR, "logs")
+
+# Directory to save results
+RESULTS_DIR = os.path.join(ROOT_DIR, "logs/borehole_results/")
 
 ############################################################
 #  Configurations
@@ -38,7 +43,7 @@ class BoreholeConfig(Config):
     NUM_CLASSES = 3  # Background, fracture, vug
 
     # Number of training steps per epoch
-    # STEPS_PER_EPOCH = 100
+    STEPS_PER_EPOCH = 100
 
     # Skip detections with < 90% confidence
     # DETECTION_MIN_CONFIDENCE = 0.9
@@ -53,8 +58,8 @@ class BoreholeDataset(utils.Dataset):
     def load_borehole(self, dataset_dir, subset=1.0):
         
         # Add classes.
-        self.add_class("fracture", 1, "fracture")
-        self.add_class("vug", 2, "vug")
+        self.add_class("borehole", 1, "fracture")
+        self.add_class("borehole", 2, "vug")
 
         data = None
 
@@ -152,6 +157,8 @@ def get_model(mode, model_dir, startpoint="last"):
 
 def train(model, train_path, validation_path, subset=1.0):
     """Train the model."""
+    config = BoreholeConfig()
+
     # Training dataset.
     dataset_train = BoreholeDataset()
     dataset_train.load_borehole(train_path, subset=subset)
@@ -165,7 +172,7 @@ def train(model, train_path, validation_path, subset=1.0):
     print("Training network heads")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=30,
+                epochs=20,
                 layers='heads')
 
 def predict(model, dataset_dir, subset=1.0):
