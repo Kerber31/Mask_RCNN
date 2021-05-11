@@ -4,6 +4,7 @@ import json
 import datetime
 import numpy as np
 import skimage.draw
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 # Root directory of the project
@@ -45,8 +46,23 @@ class BoreholeConfig(Config):
     # Number of training steps per epoch
     STEPS_PER_EPOCH = 100
 
-    # Skip detections with < 90% confidence
-    # DETECTION_MIN_CONFIDENCE = 0.9
+
+class BoreholeInferenceConfig(Config):
+    """Configuration for training on the toy  dataset.
+    Derives from the base Config class and overrides some values.
+    """
+    # Give the configuration a recognizable name
+    NAME = "borehole"
+
+    IMAGES_PER_GPU = 1
+
+    # Number of classes (including background)
+    NUM_CLASSES = 3  # Background, fracture, vug
+
+    # Number of training steps per epoch
+    STEPS_PER_EPOCH = 100
+
+    USE_MINI_MASK = False
 
 
 ############################################################
@@ -131,9 +147,12 @@ class BoreholeDataset(utils.Dataset):
 # Training and Testing 
 ############################################################
 
-def get_model(mode, model_dir, startpoint="last"):
+def get_model(mode, model_dir, startpoint="last", inference_config=False):
     model = None
     config = BoreholeConfig()
+
+    if inference_config:
+        config = BoreholeInferenceConfig()
 
     if mode == "train":
         model = modellib.MaskRCNN(mode="training", config=config,
@@ -204,3 +223,31 @@ def predict(model, dataset_dir, subset=1.0):
             show_bbox=False, show_mask=False,
             title="Predictions")
         plt.savefig("{}/{}.png".format(prediction_dir, dataset.image_info[image_id]["id"]))
+
+def evaluate_model(model, dataset_dir, subset=1.0):
+    APs = []
+    precisions_dict = {}
+    recall_dict     = {}
+
+    # Read dataset
+    dataset = BoreholeDataset()
+    dataset.load_borehole(dataset_dir, subset=subset)
+    dataset.prepare()
+
+    for index, image_id in enumerate(dataset.image_ids):
+        # load image, bounding boxes and masks for the image id
+        image, image_meta, gt_class_id, gt_bbox, gt_mask = modellib.load_image_gt(dataset, model.config, image_id)
+        # make prediction
+        yhat = model.detect([image], verbose=0)
+        # extract results for first sample
+        r = yhat[0]
+        # calculate statistics, including AP
+        AP, precisions, recalls, _ = utils.compute_ap(gt_bbox, gt_class_id, gt_mask, r["rois"], r["class_ids"], r["scores"], r['masks'])
+        precisions_dict[image_id] = np.mean(precisions)
+        recall_dict[image_id] = np.mean(recalls)
+        # store
+        APs.append(AP)
+
+    # calculate the mean AP across all images
+    mAP = np.mean(APs)
+    return mAP, precisions_dict, recall_dict
